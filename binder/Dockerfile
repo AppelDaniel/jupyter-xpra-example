@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
     xterm \
     nautilus \
+    xorg \
     python3-gi \
     libdbus-glib-1-2 \
     python3-cryptography \
