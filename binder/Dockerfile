@@ -22,5 +22,5 @@ RUN pip install --no-cache-dir jupyter-xprahtml5-proxy
 USER ${NB_UID}
 
 # Step 5: Start Xterm as dummy application
-RUN echo 'c.ServerProxy.autostart = ["xterm"]' >> /etc/jupyter/jupyter_server_config.py
+#RUN echo 'c.ServerProxy.autostart = ["xterm"]' >> /etc/jupyter/jupyter_server_config.py
 #CMD ["xterm"]
