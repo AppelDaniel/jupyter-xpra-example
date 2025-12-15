@@ -1,0 +1,13 @@
+FROM ubuntu:24.04
+RUN apt update && DEBIAN_FRONTEND=noninteractive && \
+  apt install -y python3 paraview xterm wget alsa-utils ca-certificates && \
+  wget -O "/usr/share/keyrings/xpra.asc" https://xpra.org/xpra.asc && \
+  cd /etc/apt/sources.list.d && \
+  wget https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/noble/xpra.sources && \
+  apt update && apt upgrade -y && apt install -y xpra
+#CMD ["xpra","start","--start=paraview","--bind-tcp=0.0.0.0:8124","--daemon=no"]
+# dbus-daemon to allow pulseaudio to connect to system bus, do not daemonize when running server, i.e. print log to stdout
+CMD ["sh","-c","dbus-daemon --system && xpra start --start=paraview --bind-tcp=0.0.0.0:8124 --daemon=no"]
+
+# launch container
+#docker run --rm -it --device /dev/snd:/dev/snd -p 8124:8124 xpra:ubuntu24 bash

@@ -1,0 +1,326 @@
+# =================================================================================================
+# Ubuntu-based FLEXI environment including ParaView and HOPR / PyHOPE
+# build docker image with github namespace:     docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:2025.08_devel .
+# launch with X11-forwarding [BUILDMODE=base]:  xhost +local:docker && docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_base
+# launch starting Jupyter [BUILDMODE=jupyter]:  docker run --rm -it -p 8888:8888 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_jupyter jupyter lab --ip=0.0.0.0 --no-browser --allow-root
+# ==================================================================================================
+
+# Multi-stage build to optionally skip Jupyter-specific images layers and thereby reduce the image size (BUILDMODE=base)
+# To include these layers, build with flag: --build-arg BUILDMODE=jupyter
+# Resulting build sequence: base0 > {base1|jupyter1} > base2 > {base3|jupyter3} > base 4
+ARG BUILDMODE=base
+
+
+# =================================================================================================
+# 0. Setup FLEXI environment as root [independent from BUILDMODE]
+# =================================================================================================
+
+# Load the base image
+FROM ubuntu:24.04 AS base0
+
+# Numerics Research Group
+LABEL maintainer="Numerics Reseach Group, University of Stuttgart <numerics@iag.uni-stuttgart.de>"
+
+# Set name and user/group ID of non-root user to "jovyan" (default of Jupyter-notebooks)
+ARG NB_USER=jovyan
+ARG NB_UID=1001
+ARG NB_GID=1001
+
+# Configure system environment:
+# - Use timezone (TZ) of Berlin as default
+# - Suppress user-interaction during package installation (e.g. timezone configuration dialog of tzdata)
+# - Set default locale for consistent build behavior and enabled non-ASCII keys (e.g. Umlaute): C = computer language, UTF-8 = utf8-encoding
+# - Set bash as default shell (especially for the terminal in Jupyter notebooks)
+ENV TZ=Europe/Berlin \
+    DEBIAN_FRONTEND=noninteractive \
+    LC_ALL=C.UTF-8 \
+    LANG=C.UTF-8 \
+    SHELL=/bin/bash
+
+# Install basic packages and libraries as root
+USER root
+
+# Setup required packages
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    # Utility
+    vim nano tzdata tree eog git git-lfs wget curl tar bzip2 build-essential \
+    # FLEXI environment
+    cmake cmake-curses-gui gfortran zlib1g-dev python3-dev python3-pip python3-venv python-is-python3 \
+    # PyHOPE
+    libxft-dev libxfixes3 \
+    # ParaView setup
+    mesa-common-dev libglu1-mesa-dev libgl1-mesa-dev libegl1-mesa-dev \
+    qtbase5-dev qt5-qmake libqt5x11extras5-dev libqt5opengl5-dev libqt5help5 qtbase5-dev-tools qttools5-dev qtxmlpatterns5-dev-tools libqt5svg5-dev && \
+    # reduce image size
+    apt-get clean -y && apt-get autoremove -y --purge && rm -rf /var/lib/apt/lists/*
+
+# Setup build environment, disabling CPU-specific optimizations to ensure portability of image:
+# position-independent code (PIC) for shared libraries, compatibility with x86-64 processors, generic CPU scheduler
+ENV CPU_PORTABLE_FLAGS="-fPIC -march=x86-64 -mtune=generic"
+ENV CC=gcc \
+    CXX=g++ \
+    FC=gfortran \
+    F90=gfortran \
+    CFLAGS=${CPU_PORTABLE_FLAGS} \
+    CXXFLAGS=${CPU_PORTABLE_FLAGS} \
+    CPPFLAGS=${CPU_PORTABLE_FLAGS} \
+    FFLAGS=${CPU_PORTABLE_FLAGS} \
+    FCFLAGS=${CPU_PORTABLE_FLAGS}
+
+# Setup OpenBLAS, ensure cross-platform portability by building library for multiple targets and detecting CPU at runtime (DYNAMIC_ARCH=ON)
+RUN OPENBLAS_VERSION=0.3.30 && cd /tmp && \
+    wget https://github.com/OpenMathLib/OpenBLAS/archive/refs/tags/v${OPENBLAS_VERSION}.tar.gz && \
+    tar -xvf v${OPENBLAS_VERSION}.tar.gz && \
+    cd OpenBLAS-${OPENBLAS_VERSION} && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/opt -DDYNAMIC_ARCH=ON .. && \
+    make -j$(nproc) && cmake --install . && \
+    cd /tmp && rm -rf OpenBLAS* && rm -rf v${OPENBLAS_VERSION}.tar.gz
+
+# Setup OpenMPI
+RUN OPENMPI_VERSION=5.0.8 && cd /tmp && \
+    wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${OPENMPI_VERSION}.tar.bz2 && \
+    tar -xvf openmpi-${OPENMPI_VERSION}.tar.bz2 && \
+    cd openmpi-${OPENMPI_VERSION} && \
+    ./configure --prefix=/opt && \
+    make -j$(nproc) && make install && \
+    ldconfig && \
+    cd /tmp && rm -rf openmpi*
+
+# Setup HDF5
+# NOTE: By default, both static and shared lib are built, which reduces the images size as tools like h5diff link the shared one (while FLEXI prefers the static)
+RUN HDF5_VERSION=1.14.6 && cd /tmp && \
+    wget https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz && \
+    tar -xvf hdf5-${HDF5_VERSION}.tar.gz && \
+    cd hdf5-${HDF5_VERSION} && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/opt \
+        -DHDF5_BUILD_FORTRAN=ON \
+        -DHDF5_ENABLE_PARALLEL=ON \
+        -DHDF5_USE_ZLIB_STATIC=ON \
+        -DZLIB_USE_EXTERNAL=ON \
+        .. && \
+    make -j$(nproc) && cmake --install . && \
+    cd /tmp && rm -rf hdf5*
+
+# Setup FFTW
+RUN FFTW_VERSION=3.3.10 && cd /tmp && \
+    wget https://fftw.org/fftw-${FFTW_VERSION}.tar.gz && \
+    tar -xvf fftw-${FFTW_VERSION}.tar.gz && \
+    cd fftw-${FFTW_VERSION} && \
+    ./configure --prefix=/opt && \
+    make -j$(nproc) && make install && \
+    cd /tmp && rm -rf fftw*
+
+# Setup CGNS
+RUN CGNS_VERSION=4.4.0 && cd /tmp && \
+    wget https://github.com/CGNS/CGNS/archive/refs/tags/v${CGNS_VERSION}.tar.gz && \
+    tar -xvf v${CGNS_VERSION}.tar.gz && \
+    cd CGNS-${CGNS_VERSION} && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/opt \
+          -DCGNS_ENABLE_FORTRAN=ON \
+          -DCGNS_ENABLE_64BIT=ON \
+          -DCGNS_BUILD_SHARED=OFF \
+          -DCGNS_USE_SHARED=OFF \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCGNS_BUILD_CGNSTOOLS=OFF \
+          -DCGNS_ENABLE_HDF5=ON \
+          -DHDF5_NEED_MPI=ON \
+          -DCGNS_ENABLE_PARALLEL=OFF \
+          -DCGNS_ENABLE_TESTS=OFF \
+          -DCMAKE_SKIP_RPATH=ON \
+          .. && \
+    make -j$(nproc) && make install && \
+    cd /tmp && rm -rf v* CGNS-*
+
+# Setup ParaView
+# Ubuntu24 apt-repository provides v5.11.2 which suffers from XML-parsing bug (https://discourse.paraview.org/t/i-cannot-read-a-vtp-file-i-could-open-yesterday-can-someone-try-to-open-it/13938)
+COPY FileParser_5_9_0.patch .
+RUN PARAVIEW_VERSION=5.13.3 && cd /tmp && \
+    wget https://www.paraview.org/files/v${PARAVIEW_VERSION%??}/ParaView-v${PARAVIEW_VERSION}.tar.gz && \
+    tar -xvf ParaView-v${PARAVIEW_VERSION}.tar.gz && \
+    cd ParaView-v${PARAVIEW_VERSION} && \
+    mv ../../FileParser_5_9_0.patch . && patch -p0 < FileParser_5_9_0.patch && \
+    mkdir build && cd build/ && \
+    cmake \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DPARAVIEW_USE_MPI=ON \
+      -DPARAVIEW_INSTALL_DEVELOPMENT_FILES=ON \
+      -DPARAVIEW_USE_PYTHON=ON \
+      -DVTK_MODULE_USE_EXTERNAL_VTK_hdf5=ON \
+      -DHDF5_IS_PARALLEL=ON \
+      -DHDF5_DIR=/opt/cmake \
+      -DCMAKE_INSTALL_PREFIX=/opt \
+      ../ && \
+    make -j $(nproc) && make install && \
+    cd /tmp && rm -rf ParaView*
+
+
+# =================================================================================================
+# 1. Create new user to install FLEXI [dependent on BUILDMODE]
+# =================================================================================================
+
+# [BUILDMODE=base]
+FROM base0 AS base1
+
+# Create new (non-root) user
+RUN groupadd --gid ${NB_GID} ${NB_USER} && \
+    useradd  --gid ${NB_GID} --uid ${NB_UID} -m -s /bin/bash ${NB_USER}
+
+# -------------------------------------------------------------------------------------------------
+
+# [BUILDMODE=jupyter]
+FROM base0 AS jupyter1
+
+# Copy and execute script to correct permissions
+# Taken from: https://github.com/jupyter/docker-stacks/tree/main/images/docker-stacks-foundation
+COPY fix-permissions.sh /usr/local/bin/fix-permissions.sh
+RUN chmod +x /usr/local/bin/fix-permissions.sh
+
+# Create new (non-root) user
+# NOTE: This needs to be done in a single RUN command and before cloning FLEXI to avoid duplicating all the files across image layers when permissions change
+RUN groupadd --gid ${NB_GID} ${NB_USER} && \
+    useradd  --gid ${NB_GID} --uid ${NB_UID} -m -s /bin/bash ${NB_USER} && \
+    /usr/local/bin/fix-permissions.sh /home/${NB_USER}
+
+
+# =================================================================================================
+# 2. Install FLEXI and HOPR / PyHOPE [independent from BUILDMODE]
+# =================================================================================================
+
+# Start from either of the previous stages
+FROM ${BUILDMODE}1 AS base2
+
+# Switch to non-root user
+USER ${NB_USER}
+
+# FLEXI environment installed to /opt, hence include directory in PATH variable
+ENV PATH="/opt/bin:$PATH"
+
+# Define working directory and set up vim
+WORKDIR /home/${NB_USER}
+
+# Set up vim, granting ownership to NB_USER for write access
+COPY --chown=${NB_UID}:${NB_GID} vimrc /home/${NB_USER}/.vimrc
+
+# Create venv and enable it to allow for pip installations
+RUN python -m venv venv
+ENV PATH="/home/${NB_USER}/venv/bin:$PATH"
+
+# Setup FLEXI
+RUN cd /home/${NB_USER} && \
+    git clone https://github.com/flexi-framework/flexi.git && \
+    cd flexi  && \
+    # build all presets without CPU-specific optimizations to ensure portability
+    for PRESET in $(cmake --list-presets | sed -n 's/"\(.*\)"/\1/p'); do \
+      cmake -DFLEXI_INSTRUCTION='-march=x86-64 -mtune=generic' --preset $PRESET && cmake --build --preset $PRESET -j ${nproc}; \
+    done
+
+# Setup HOPR
+RUN cd /home/${NB_USER} && \
+    git clone https://github.com/hopr-framework/hopr.git && \
+    cd hopr && mkdir build && cd build && \
+    cmake -DLIBS_BUILD_HDF5=OFF -DLIBS_BUILD_CGNS=OFF -DHOPR_INSTRUCTION='-march=x86-64 -mtune=generic' ../ && \
+    make -j $(nproc)
+ENV PATH="/home/${NB_USER}/hopr/build/bin:$PATH"
+
+# Setup PyHOPE
+RUN cd /home/${NB_USER} && \
+    pip install --no-cache-dir \
+    https://gitlab.iag.uni-stuttgart.de/libs/python-gmsh/-/raw/master/gmsh-4.14.0.post1-py3-none-linux_x86_64.whl \
+    pyhope
+
+
+# =================================================================================================
+# 3. Setup Jupyter environment (optionally) and define default command [dependent on BUILDMODE]
+# =================================================================================================
+
+# [BUILDMODE=base]
+FROM base2 AS base3
+
+# Default command
+CMD ["/bin/bash"]
+
+# -------------------------------------------------------------------------------------------------
+
+# [BUILDMODE=jupyter]
+FROM base2 AS jupyter3
+
+# Install Jupyter
+# NOTE: jupyterlab is pinned to version 4.2 since links are no longer highlighted as of version 4.3 with jupyterlab-myst
+#       see this issue: https://github.com/jupyter-book/jupyterlab-myst/issues/248
+RUN pip install --no-cache-dir \
+    numpy matplotlib h5py notebook 'jupyterlab==4.2' jupyterhub ipykernel
+
+# replace current documentation -> TODO remove once merged into master
+# docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_jupyter --build-arg BUILDMODE=jupyter --build-context docs=../../docs .
+COPY --chown=${NB_UID}:${NB_GID} --from=docs documentation /home/${NB_USER}/flexi/docs/documentation
+# Enable Jupyter-based tutorials: install Sphinx/MyST packages, register bash kernel, generate notebooks
+RUN pip install --no-cache-dir -r flexi/docs/documentation/requirements.txt && \
+    python -m bash_kernel.install && \
+    cd /home/${NB_USER}/flexi/docs/documentation && ./buildJupyter.sh
+# Export path to FLEXI root directory since required for navigating through tutorials
+ENV FLEXI_ROOT=/home/${NB_USER}/flexi
+
+# Install PyVista for basic visualization of VTU files within Jupyter
+# https://github.com/pyvista/pyvista/tree/main/docker
+RUN pip install --no-cache-dir \
+    'pyvista[all]' 'ipywidgets<9.0.0' jupyter-server-proxy meshio trimesh 'trame>=2.5.2' 'trame-vtk>=2.5.8' 'trame-vuetify>=2.3.1'
+# Enable JupyterLab in container, configure PyVista/Trame for remote Jupyter environment
+ENV JUPYTER_ENABLE_LAB=yes \
+    PYVISTA_TRAME_SERVER_PROXY_PREFIX='/proxy/'
+
+# Install Jupyter-remote-desktop-proxy package to run XFCE desktop environment in Jupyter
+# https://github.com/jupyterhub/jupyter-remote-desktop-proxy
+RUN pip install --no-cache-dir jupyter-remote-desktop-proxy
+# Install the packages needed to provide the VNC server (TigerVNC) and the actual Linux Desktop environment (Xubuntu)
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    nodejs npm dbus-x11 \
+    # xclip is added as jupyter-remote-desktop-proxy's tests requires it
+    xclip \
+    # XFCE desktop environment
+    xfce4 xfce4-panel xfce4-session xfce4-settings xorg xubuntu-icon-theme fonts-dejavu \
+    # TigerVNC server
+    tigervnc-standalone-server && \
+    # Disable the automatic screenlock since the account password is unknown
+    apt-get -y -qq remove xfce4-screensaver && \
+    # chown $HOME to workaround that the xorg installation creates a /home/jovyan/.cache directory owned by root
+    chown -R $NB_UID:$NB_GID $HOME && \
+    rm -rf /var/lib/apt/lists/*
+
+# JupyterHub helper scripts
+# Taken from: https://github.com/jupyter/docker-stacks/tree/main/images/base-notebook
+COPY start-singleuser.sh start-notebook.sh start-singleuser.py start-notebook.py  /usr/local/bin/
+COPY jupyter_server_config.py docker_healthcheck.py                               /etc/jupyter/
+
+# Adjust permissions and ownerships
+RUN chmod +x \
+    /usr/local/bin/start-singleuser.sh /usr/local/bin/start-notebook.sh \
+    /usr/local/bin/start-singleuser.py /usr/local/bin/start-notebook.py && \
+    /usr/local/bin/fix-permissions.sh /etc/jupyter
+
+# Configure container startup, ensuring that JupyterHub can intially change to relative directory "home/jovyan"
+ENV JUPYTER_PORT=8888
+EXPOSE ${JUPYTER_PORT}
+WORKDIR /
+CMD ["start-notebook.py"]
+
+# Healthcheck
+HEALTHCHECK --interval=3s --timeout=1s --start-period=3s --retries=3 \
+    CMD /etc/jupyter/docker_healthcheck.py || exit 1
+
+
+# =================================================================================================
+# 4. Switch to user and finalize [independent from BUILDMODE]
+# =================================================================================================
+
+# Start from either of the previous stages
+FROM ${BUILDMODE}3 AS base4
+
+# Switch (back) to user
+USER ${NB_USER}
