@@ -25,5 +25,5 @@
 ##RUN echo 'c.ServerProxy.autostart = ["xterm"]' >> /etc/jupyter/jupyter_server_config.py
 ##CMD ["xterm"]
 
-FROM ghcr.io/flexi-framework/ubuntu24.04_gcc:v2025.10.0
+FROM ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_base
 RUN pwd
