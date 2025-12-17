@@ -1,5 +1,6 @@
 #FROM ghcr.io/flexi-framework/ubuntu24.04_gcc:v2025.10.0
-FROM jupyter/base-notebook:python-3.11
+#FROM jupyter/base-notebook:python-3.11
+FROM jupyter/docker-stacks-foundation:python-3.11
 ARG NB_USER=jovyan
 ARG NB_UID=1001
 ARG NB_GID=1001
