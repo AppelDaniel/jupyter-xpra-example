@@ -9,7 +9,8 @@ ARG NB_GID=1001
 # NOTE: jupyterlab is pinned to version 4.2 since links are no longer highlighted as of version 4.3 with jupyterlab-myst
 #       see this issue: https://github.com/jupyter-book/jupyterlab-myst/issues/248
 RUN pip install --no-cache-dir \
-    numpy matplotlib h5py notebook 'jupyterlab==4.2' jupyterhub ipykernel
+    numpy matplotlib h5py notebook 'jupyterlab==4.2' jupyterhub ipykernel \
+    jupyter-collaboration jupyterlab-hub-credit-extension jupyterlab-data-mount 
 
 ## replace current documentation -> TODO remove once merged into master
 ## docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_jupyter --build-arg BUILDMODE=jupyter --build-context docs=../../docs .
