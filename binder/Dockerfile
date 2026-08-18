@@ -285,8 +285,8 @@ RUN apt-get update && \
 
 # Integrate VS Code adaptation by Code-Server in JupyterLab environment (requires jupyter-server-proxy)
 # > Documentation: https://github.com/coder/code-server
-RUN curl -fsSL https://code-server.dev/install.sh | sh
-RUN pip install jupyter-vscode-proxy
+RUN curl -fsSL https://code-server.dev/install.sh | sh && \
+    pip install jupyter-vscode-proxy
 
 # TODO should be in base image
 # Copy and execute script to correct permissions
@@ -306,10 +306,9 @@ RUN chmod +x \
     /usr/local/bin/start-singleuser.py /usr/local/bin/start-notebook.py && \
     /usr/local/bin/fix-permissions /etc/jupyter
 
-# Configure container startup, ensuring that JupyterHub can intially change to relative directory "home/jovyan"
+# Configure container startup, exposing port for Jupyter Lab
 ENV JUPYTER_PORT=8888
 EXPOSE ${JUPYTER_PORT}
-#WORKDIR /
 CMD ["start-notebook.py"]
 
 # Healthcheck
