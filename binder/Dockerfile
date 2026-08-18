@@ -127,12 +127,12 @@ RUN CGNS_VERSION=4.4.0 && cd /tmp && \
 
 # Setup ParaView (self-built for POSTI plug-in)
 # NOTE: Ubuntu24 apt-repository provides v5.11.2 which suffers from XML-parsing bug (https://discourse.paraview.org/t/i-cannot-read-a-vtp-file-i-could-open-yesterday-can-someone-try-to-open-it/13938)
-COPY binder/FileParser_5_9_0.patch .
+COPY binder/FileParser_5_9_0.patch /tmp
 RUN PARAVIEW_VERSION=5.13.3 && cd /tmp && \
     wget https://www.paraview.org/files/v${PARAVIEW_VERSION%??}/ParaView-v${PARAVIEW_VERSION}.tar.gz && \
     tar -xvf ParaView-v${PARAVIEW_VERSION}.tar.gz && \
     cd ParaView-v${PARAVIEW_VERSION} && \
-    mv ../../FileParser_5_9_0.patch . && patch -p0 < FileParser_5_9_0.patch && \
+    mv /tmp/FileParser_5_9_0.patch . && patch -p0 < FileParser_5_9_0.patch && \
     mkdir build && cd build/ && \
     cmake \
       -DCMAKE_BUILD_TYPE=Release \
