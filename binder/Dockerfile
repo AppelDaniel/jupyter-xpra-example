@@ -3,8 +3,11 @@ ARG BUILDTARGET=jupyter
 
 # Set default root image: Jupyter docker-stacks-foundation
 # > Dockerfile: https://github.com/jupyter/docker-stacks/blob/main/images/docker-stacks-foundation/Dockerfile
-FROM quay.io/jupyter/docker-stacks-foundation:ubuntu-24.04 AS jupyter
-FROM ubuntu:24.04                                          AS base
+# NOTE: Use image with pinned Python version <=3.12 for ParaView 5.13 due to modified interface of internal C-API as of Python 3.13
+#       See e.g. related issue https://github.com/Penlect/rectangle-packer/issues/29
+FROM quay.io/jupyter/docker-stacks-foundation:python-3.12 AS jupyter
+FROM ubuntu:24.04                                         AS base
+
 
 # =================================================================================================
 # 0. Setup FLEXI environment as root [independent from BUILDTARGET]
