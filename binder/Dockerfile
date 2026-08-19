@@ -1,3 +1,11 @@
+# =================================================================================================
+# Ubuntu-based FLEXI environment including ParaView and HOPR / PyHOPE
+# build docker image with github namespace:       docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode .
+# launch with X11-forwarding [BUILDTARGET=base]:  xhost +local:docker && docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode
+# launch starting Jupyter [BUILDTARGET=jupyter]:  docker run --rm -it -p 8888:8888 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode jupyter lab --ip=0.0.0.0 --no-browser --allow-root
+# launch as root user [BUILDTARGET=jupyter]:      docker run --rm -it --user root -e NB_USER="root" -e NB_UID=0 -e NB_GID=0 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode bash
+# ==================================================================================================
+
 # Build argument to optionally skip Jupyter-specific images layers and thereby reduce the image size (--build-arg BUILDTARGET=base)
 ARG BUILDTARGET=jupyter
 
@@ -233,6 +241,9 @@ RUN cd /home/${NB_USER} && \
 # [BUILDTARGET=base]
 FROM base2 AS base3
 
+# Define working directory when launching container
+WORKDIR ${FLEXIROOT}/docs/documentation/04_tutorials
+
 # Default command
 CMD ["/bin/bash"]
 
@@ -245,7 +256,7 @@ FROM base2 AS jupyter3
 # NOTE: jupyterlab is pinned to version 4.2 since links are no longer highlighted as of version 4.3 with jupyterlab-myst
 #       see this issue: https://github.com/jupyter-book/jupyterlab-myst/issues/248
 RUN pip install --no-cache-dir \
-    numpy matplotlib h5py notebook 'jupyterlab==4.2' jupyterhub ipykernel \
+    numpy matplotlib h5py 'httpx==0.27.2' notebook 'jupyterlab==4.2' jupyterhub ipykernel \
     jupyter-collaboration jupyterlab-hub-credit-extension jupyterlab-data-mount 
 
 ## replace current documentation -> TODO remove once merged into master
@@ -256,7 +267,7 @@ RUN pip install --no-cache-dir \
 #    python -m bash_kernel.install && \
 #    cd /home/${NB_USER}/flexi/docs/documentation && ./buildJupyter.sh
 ## Export path to FLEXI root directory since required for navigating through tutorials
-#ENV FLEXI_ROOT=/home/${NB_USER}/flexi
+ENV FLEXI_ROOT=/home/${NB_USER}/flexi
 
 # Install PyVista for basic visualization of VTU files within Jupyter
 # > Dockerfile: https://github.com/pyvista/pyvista/tree/main/docker
@@ -289,13 +300,11 @@ RUN apt-get update && \
 # Integrate VS Code adaptation by Code-Server in JupyterLab environment (requires jupyter-server-proxy)
 # > Documentation: https://github.com/coder/code-server
 RUN curl -fsSL https://code-server.dev/install.sh | sh && \
-    pip install jupyter-vscode-proxy
-
-# TODO should be in base image
-# Copy and execute script to correct permissions
-# Taken from: https://github.com/jupyter/docker-stacks/tree/main/images/docker-stacks-foundation
-#COPY binder/fix-permissions.sh /usr/local/bin/fix-permissions.sh
-#RUN chmod +x /usr/local/bin/fix-permissions.sh
+    # remove deb package file
+    rm -r /home/${NB_USER}/.cache/code-server/ && \
+    # Install VS Code proxy for Jupyter Lab integration, and Fortran language server for "Modern Fortran" extension
+    pip install jupyter-vscode-proxy fortls && \
+    fix-permissions "/home/${NB_USER}/.cache"
 
 # JupyterHub helper scripts
 # > Taken from: https://github.com/jupyter/docker-stacks/tree/main/images/base-notebook
@@ -324,6 +333,9 @@ USER $NB_USER
 
 # Pre-install "Modern Fortran" VS Code extension from Coder extension marketplace
 RUN code-server --install-extension fortran-lang.linter-gfortran
+
+# Define working directory when launching container
+WORKDIR ${FLEXI_ROOT}/docs/documentation/04_tutorials
 
 
 # =================================================================================================
