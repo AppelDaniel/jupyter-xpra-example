@@ -271,8 +271,9 @@ ENV FLEXI_ROOT=/home/${NB_USER}/flexi
 
 # Install PyVista for basic visualization of VTU files within Jupyter
 # > Dockerfile: https://github.com/pyvista/pyvista/tree/main/docker
-RUN pip install --no-cache-dir \
-    'pyvista[all]' 'ipywidgets<9.0.0' jupyter-server-proxy meshio trimesh 'trame>=2.5.2' 'trame-vtk>=2.5.8' 'trame-vuetify>=2.3.1'
+RUN pip install --no-cache-dir jupyter-server-proxy 'pyvista[all]'
+#RUN pip install --no-cache-dir \
+#    'pyvista[all]' 'ipywidgets<9.0.0' aiohttp jupyter-server-proxy meshio trimesh 'trame>=2.5.2' 'trame-vtk>=2.5.8' 'trame-vuetify>=2.3.1'
 # Enable JupyterLab in container, configure PyVista/Trame for remote Jupyter environment
 ENV JUPYTER_ENABLE_LAB=yes \
     PYVISTA_TRAME_SERVER_PROXY_PREFIX='/proxy/'
