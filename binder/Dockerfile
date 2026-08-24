@@ -1,20 +1,20 @@
 # =================================================================================================
 # Ubuntu-based FLEXI environment including ParaView and HOPR / PyHOPE
-# build docker image with github namespace:       docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode .
-# launch with X11-forwarding [BUILDTARGET=base]:  xhost +local:docker && docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode
-# launch starting Jupyter [BUILDTARGET=jupyter]:  docker run --rm -it -p 8888:8888 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode jupyter lab --ip=0.0.0.0 --no-browser --allow-root
-# launch as root user [BUILDTARGET=jupyter]:      docker run --rm -it --user root -e NB_USER="root" -e NB_UID=0 -e NB_GID=0 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode bash
+# build docker image with github namespace:          docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode --build-arg BUILDTARGET=minimal .
+# launch with X11-forwarding [BUILDTARGET=minimal]:  xhost +local:docker && docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode
+# launch starting Jupyter    [BUILDTARGET=jupyter]:  docker run --rm -it -p 8888:8888 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode jupyter lab --ip=0.0.0.0 --no-browser --allow-root
+# launch as root user        [BUILDTARGET=jupyter]:  docker run --rm -it --user root -e NB_USER="root" -e NB_UID=0 -e NB_GID=0 ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_vscode bash
 # ==================================================================================================
 
-# Build argument to optionally skip Jupyter-specific images layers and thereby reduce the image size (--build-arg BUILDTARGET=base)
+# Build argument to optionally skip Jupyter-specific images layers and thereby reduce the image size (--build-arg BUILDTARGET=minimal)
 ARG BUILDTARGET=jupyter
 
 # Set default root image: Jupyter docker-stacks-foundation
-# > Dockerfile: https://github.com/jupyter/docker-stacks/blob/main/images/docker-stacks-foundation/Dockerfile
-# NOTE: Use image with pinned Python version <=3.12 for ParaView 5.13 due to modified interface of internal C-API as of Python 3.13
-#       See e.g. related issue https://github.com/Penlect/rectangle-packer/issues/29
-FROM quay.io/jupyter/docker-stacks-foundation:python-3.12 AS jupyter
-FROM ubuntu:24.04                                         AS base
+# > Dockerfile:              https://github.com/jupyter/docker-stacks/blob/main/images/docker-stacks-foundation/Dockerfile
+# > Quay container registry: https://quay.io/repository/jupyter/docker-stacks-foundation?tab=tags
+# NOTE: Pull image by digest instead of tag (python-3.13) for reproducibility of docker image itself
+FROM quay.io/jupyter/docker-stacks-foundation@sha256:e9aa9f644b219a0e9d59af91c51fc86c22c30a91e740257771560849bc4cb7ea AS jupyter
+FROM ubuntu:26.04                                                                                                     AS minimal
 
 
 # =================================================================================================
@@ -22,7 +22,7 @@ FROM ubuntu:24.04                                         AS base
 # =================================================================================================
 
 # Load root image
-FROM $BUILDTARGET AS base0
+FROM $BUILDTARGET AS minimal0
 
 # Numerics Research Group
 LABEL maintainer="Numerics Reseach Group, University of Stuttgart <numerics@iag.uni-stuttgart.de>"
@@ -71,7 +71,7 @@ ENV CC=gcc \
     FCFLAGS=${CPU_PORTABLE_FLAGS}
 
 # Setup OpenBLAS, ensure cross-platform portability by building library for multiple targets and detecting CPU at runtime (DYNAMIC_ARCH=ON)
-RUN OPENBLAS_VERSION=0.3.30 && cd /tmp && \
+RUN OPENBLAS_VERSION=0.3.33 && cd /tmp && \
     wget https://github.com/OpenMathLib/OpenBLAS/archive/refs/tags/v${OPENBLAS_VERSION}.tar.gz && \
     tar -xvf v${OPENBLAS_VERSION}.tar.gz && \
     cd OpenBLAS-${OPENBLAS_VERSION} && \
@@ -81,7 +81,7 @@ RUN OPENBLAS_VERSION=0.3.30 && cd /tmp && \
     cd /tmp && rm -rf OpenBLAS* && rm -rf v${OPENBLAS_VERSION}.tar.gz
 
 # Setup OpenMPI
-RUN OPENMPI_VERSION=5.0.8 && cd /tmp && \
+RUN OPENMPI_VERSION=5.0.10 && cd /tmp && \
     wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${OPENMPI_VERSION}.tar.bz2 && \
     tar -xvf openmpi-${OPENMPI_VERSION}.tar.bz2 && \
     cd openmpi-${OPENMPI_VERSION} && \
@@ -91,22 +91,22 @@ RUN OPENMPI_VERSION=5.0.8 && cd /tmp && \
     cd /tmp && rm -rf openmpi*
 
 # Setup HDF5
-RUN HDF5_VERSION=1.14.6 && cd /tmp && \
-    wget https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz && \
+RUN HDF5_VERSION=2.1.1 && cd /tmp && \
+    wget https://github.com/HDFGroup/hdf5/releases/download/${HDF5_VERSION}/hdf5-${HDF5_VERSION}.tar.gz && \
     tar -xvf hdf5-${HDF5_VERSION}.tar.gz && \
     cd hdf5-${HDF5_VERSION} && \
     mkdir build && cd build && \
     cmake -DCMAKE_INSTALL_PREFIX=/opt \
-        -DHDF5_BUILD_FORTRAN=ON \
-        -DHDF5_ENABLE_PARALLEL=ON \
-        -DHDF5_USE_ZLIB_STATIC=ON \
-        -DZLIB_USE_EXTERNAL=ON \
-        .. && \
+          -DHDF5_BUILD_FORTRAN=ON \
+          -DHDF5_ENABLE_PARALLEL=ON \
+          -DHDF5_USE_ZLIB_STATIC=ON \
+          -DZLIB_USE_EXTERNAL=ON \
+          .. && \
     make -j$(nproc) && cmake --install . && \
     cd /tmp && rm -rf hdf5*
 
 # Setup FFTW
-RUN FFTW_VERSION=3.3.10 && cd /tmp && \
+RUN FFTW_VERSION=3.3.11 && cd /tmp && \
     wget https://fftw.org/fftw-${FFTW_VERSION}.tar.gz && \
     tar -xvf fftw-${FFTW_VERSION}.tar.gz && \
     cd fftw-${FFTW_VERSION} && \
@@ -115,7 +115,7 @@ RUN FFTW_VERSION=3.3.10 && cd /tmp && \
     cd /tmp && rm -rf fftw*
 
 # Setup CGNS
-RUN CGNS_VERSION=4.4.0 && cd /tmp && \
+RUN CGNS_VERSION=4.5.2 && cd /tmp && \
     wget https://github.com/CGNS/CGNS/archive/refs/tags/v${CGNS_VERSION}.tar.gz && \
     tar -xvf v${CGNS_VERSION}.tar.gz && \
     cd CGNS-${CGNS_VERSION} && \
@@ -139,7 +139,7 @@ RUN CGNS_VERSION=4.4.0 && cd /tmp && \
 # Setup ParaView (self-built for POSTI plug-in)
 # NOTE: Ubuntu24 apt-repository provides v5.11.2 which suffers from XML-parsing bug (https://discourse.paraview.org/t/i-cannot-read-a-vtp-file-i-could-open-yesterday-can-someone-try-to-open-it/13938)
 COPY binder/FileParser_5_9_0.patch /tmp
-RUN PARAVIEW_VERSION=5.13.3 && cd /tmp && \
+RUN PARAVIEW_VERSION=6.1.1 && cd /tmp && \
     wget https://www.paraview.org/files/v${PARAVIEW_VERSION%??}/ParaView-v${PARAVIEW_VERSION}.tar.gz && \
     tar -xvf ParaView-v${PARAVIEW_VERSION}.tar.gz && \
     cd ParaView-v${PARAVIEW_VERSION} && \
@@ -163,8 +163,8 @@ RUN PARAVIEW_VERSION=5.13.3 && cd /tmp && \
 # 1. Create new user to install FLEXI [dependent on BUILDTARGET]
 # =================================================================================================
 
-# [BUILDTARGET=base]
-FROM base0 AS base1
+# [BUILDTARGET=minimal]
+FROM minimal0 AS minimal1
 
 # Set name and user/group ID of non-root user to "jovyan" (default of Jupyter-notebooks)
 ARG NB_USER=jovyan
@@ -181,14 +181,13 @@ RUN if id -un "${NB_UID}" >/dev/null 2>&1; then \
 USER ${NB_USER}
 
 # Create virtualenv and enable it to allow for pip installations
-WORKDIR /home/${NB_USER}
-RUN python -m venv venv
+RUN cd /home/${NB_USER} && python -m venv venv
 ENV PATH="/home/${NB_USER}/venv/bin:$PATH"
 
 # -------------------------------------------------------------------------------------------------
 
 # [BUILDTARGET=jupyter]
-FROM base0 AS jupyter1
+FROM minimal0 AS jupyter1
 
 # NOTE: No virtualenv necessary for pip installations due to activated conda environment
 
@@ -201,23 +200,20 @@ USER ${NB_USER}
 # =================================================================================================
 
 # Start from either of the previous stages
-FROM ${BUILDTARGET}1 AS base2
+FROM ${BUILDTARGET}1 AS minimal2
 
 # FLEXI environment installed to /opt, hence include directory in PATH variable
 ENV PATH="/opt/bin:$PATH"
 
-# Set working directory when launching container and set up vim
-WORKDIR /home/${NB_USER}
+# Setup vim
 COPY binder/vimrc /home/${NB_USER}/.vimrc
 
-# Setup FLEXI
-RUN cd /home/${NB_USER} && \
-    git clone https://github.com/flexi-framework/flexi.git && \
-    cd flexi  && \
-    # build all presets without CPU-specific optimizations to ensure portability
-    for PRESET in $(cmake --list-presets | sed -n 's/"\(.*\)"/\1/p'); do \
-      cmake -DFLEXI_INSTRUCTION='-march=x86-64 -mtune=generic' --preset $PRESET && cmake --build --preset $PRESET -j ${nproc}; \
-    done
+# Avoid ParaView warnings:
+# - Create runtime directory for Qt applications manually under default path to avoid warning when building ParaView plugin
+# - Enforce software rendering (Mesa) to avoid warning when launching ParaView
+ENV XDG_RUNTIME_DIR=/tmp/runtime-${NB_USER} \
+    LIBGL_ALWAYS_SOFTWARE=TRUE
+RUN mkdir ${XDG_RUNTIME_DIR} && chmod 700 ${XDG_RUNTIME_DIR}
 
 # Setup HOPR
 RUN cd /home/${NB_USER} && \
@@ -228,21 +224,31 @@ RUN cd /home/${NB_USER} && \
 ENV PATH="/home/${NB_USER}/hopr/build/bin:$PATH"
 
 # Setup PyHOPE
+# NOTE: Install editable from GitHub repository (instead of PyPI) to provide tutorials for verification run and remove created mesh files afterwards
 RUN cd /home/${NB_USER} && \
-    pip install --no-cache-dir \
-    https://gitlab.iag.uni-stuttgart.de/libs/python-gmsh/-/raw/master/gmsh-4.14.0.post1-py3-none-linux_x86_64.whl \
-    pyhope
+    pip install --no-cache-dir https://piclas.boltzplatz.eu/public-libs/python-gmsh/-/raw/master/gmsh-4.15.2.post1-py3-none-linux_x86_64.whl && \
+    git clone https://github.com/hopr-framework/PyHOPE.git && \
+    pip install --no-cache-dir -e PyHOPE && \
+    cd PyHOPE && pyhope --verify && \
+    git clean -fX .
+
+# Download FLEXI (installation depends on BUILDTARGET)
+RUN cd /home/${NB_USER} && \
+    git clone https://github.com/flexi-framework/flexi.git
+# Export path to FLEXI root directory since required to define workdir when launching container and to step through tutorial notebooks
+ENV FLEXI_ROOT=/home/${NB_USER}/flexi
 
 
 # =================================================================================================
 # 3. Setup Jupyter environment (optionally) and define default command [dependent on BUILDTARGET]
 # =================================================================================================
 
-# [BUILDTARGET=base]
-FROM base2 AS base3
+# [BUILDTARGET=minimal]
+FROM minimal2 AS minimal3
 
-# Define working directory when launching container
-WORKDIR ${FLEXIROOT}/docs/documentation/04_tutorials
+# Pre-build FLEXI only in default configuration, without CPU-specific optimizations to ensure portability
+RUN cd ${FLEXI_ROOT} && \
+    cmake -DFLEXI_INSTRUCTION='-march=x86-64 -mtune=generic' -B build && cmake --build build -j ${nproc}
 
 # Default command
 CMD ["/bin/bash"]
@@ -250,33 +256,32 @@ CMD ["/bin/bash"]
 # -------------------------------------------------------------------------------------------------
 
 # [BUILDTARGET=jupyter]
-FROM base2 AS jupyter3
+FROM minimal2 AS jupyter3
+
+# Pre-build FLEXI for all tutorials using the presets, without CPU-specific optimizations to ensure portability
+RUN cd ${FLEXI_ROOT} && \
+    for PRESET in $(cmake --list-presets | sed -n 's/"\(.*\)"/\1/p'); do \
+        cmake -DFLEXI_INSTRUCTION='-march=x86-64 -mtune=generic' --preset $PRESET && cmake --build --preset $PRESET -j ${nproc}; \
+    done
+
+# replace current documentation -> TODO remove once merged into master
+# NOTE: Since image is built from FLEXI root directory "docker build -f binder/Dockerfile ." no named context is needed to specify the path to the docs files
+COPY --chown=${NB_UID}:${NB_GID} ./docs/documentation ${FLEXI_ROOT}/docs/documentation
+# docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_jupyter --build-arg BUILDTARGET=jupyter --build-context docs=../../docs .
+#COPY --chown=${NB_UID}:${NB_GID} --from=docs ./docs/documentation ${FLEXI_ROOT}/docs/documentation
+# Enable Jupyter-based tutorials: install Sphinx/MyST packages, register bash kernel, generate notebooks
+RUN pip install --no-cache-dir -r ${FLEXI_ROOT}/docs/documentation/requirements.txt && \
+    python -m bash_kernel.install && \
+    cd ${FLEXI_ROOT}/docs/documentation && ./buildJupyter.sh
 
 # Install Jupyter
-# NOTE: jupyterlab is pinned to version 4.2 since links are no longer highlighted as of version 4.3 with jupyterlab-myst
-#       see this issue: https://github.com/jupyter-book/jupyterlab-myst/issues/248
+# NOTE: jupyterlab_myst in requirements.txt is set to minimum version 4.6. due to a rendering issue with links (https://github.com/jupyter-book/jupyterlab-myst/issues/248)
 RUN pip install --no-cache-dir \
-    numpy matplotlib h5py 'httpx==0.27.2' notebook 'jupyterlab==4.2' jupyterhub ipykernel \
-    jupyter-collaboration jupyterlab-hub-credit-extension jupyterlab-data-mount 
-
-## replace current documentation -> TODO remove once merged into master
-## docker build -t ghcr.io/flexi-framework/ubuntu24.04_gcc:devel_jupyter --build-arg BUILDTARGET=jupyter --build-context docs=../../docs .
-#COPY --chown=${NB_UID}:${NB_GID} --from=docs documentation /home/${NB_USER}/flexi/docs/documentation
-## Enable Jupyter-based tutorials: install Sphinx/MyST packages, register bash kernel, generate notebooks
-#RUN pip install --no-cache-dir -r flexi/docs/documentation/requirements.txt && \
-#    python -m bash_kernel.install && \
-#    cd /home/${NB_USER}/flexi/docs/documentation && ./buildJupyter.sh
-## Export path to FLEXI root directory since required for navigating through tutorials
-ENV FLEXI_ROOT=/home/${NB_USER}/flexi
-
-# Install PyVista for basic visualization of VTU files within Jupyter
-# > Dockerfile: https://github.com/pyvista/pyvista/tree/main/docker
-RUN pip install --no-cache-dir jupyter-server-proxy 'pyvista[all]'
-#RUN pip install --no-cache-dir \
-#    'pyvista[all]' 'ipywidgets<9.0.0' aiohttp jupyter-server-proxy meshio trimesh 'trame>=2.5.2' 'trame-vtk>=2.5.8' 'trame-vuetify>=2.3.1'
-# Enable JupyterLab in container, configure PyVista/Trame for remote Jupyter environment
-ENV JUPYTER_ENABLE_LAB=yes \
-    PYVISTA_TRAME_SERVER_PROXY_PREFIX='/proxy/'
+    numpy matplotlib h5py notebook jupyterlab jupyterhub ipykernel \
+    # packages required for NFDI JupyterHub by JSC (https://hub.nfdi-jupyter.de/hub/home)
+    jupyter-collaboration jupyterlab-hub-credit-extension jupyterlab-data-mount
+# Enable JupyterLab in container
+ENV JUPYTER_ENABLE_LAB=yes
 
 # Install Jupyter-remote-desktop-proxy package to run XFCE desktop environment in Jupyter
 # > Documentation / Dockerfile: https://github.com/jupyterhub/jupyter-remote-desktop-proxy
@@ -301,7 +306,7 @@ RUN apt-get update && \
 # Integrate VS Code adaptation by Code-Server in JupyterLab environment (requires jupyter-server-proxy)
 # > Documentation: https://github.com/coder/code-server
 RUN curl -fsSL https://code-server.dev/install.sh | sh && \
-    # remove deb package file
+    # Remove deb package file
     rm -r /home/${NB_USER}/.cache/code-server/ && \
     # Install VS Code proxy for Jupyter Lab integration, and Fortran language server for "Modern Fortran" extension
     pip install jupyter-vscode-proxy fortls && \
@@ -312,16 +317,18 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh && \
 COPY binder/start-singleuser.sh binder/start-notebook.sh binder/start-singleuser.py binder/start-notebook.py  /usr/local/bin/
 COPY binder/jupyter_server_config.py binder/docker_healthcheck.py                                             /etc/jupyter/
 
-# Adjust permissions and ownerships
-# NOTE: fix-permissions script available in root image (docker-stacks-foundation)
+# Adjust permissions and ownerships using fix-permissions script from root image (docker-stacks-foundation)
 RUN chmod +x \
     /usr/local/bin/start-singleuser.sh /usr/local/bin/start-notebook.sh \
     /usr/local/bin/start-singleuser.py /usr/local/bin/start-notebook.py && \
     /usr/local/bin/fix-permissions /etc/jupyter
 
-# Configure container startup, exposing port for Jupyter Lab
-ENV JUPYTER_PORT=8888
+# Enable JupyterLab in container and expose port for it
+ENV JUPYTER_ENABLE_YES=yes \
+    JUPYTER_PORT=8888
 EXPOSE ${JUPYTER_PORT}
+
+# Start JupyterLab upon container launchi and show default notebook (see configuration in jupyter_server_config.py)
 CMD ["start-notebook.py"]
 
 # Healthcheck
@@ -335,16 +342,17 @@ USER $NB_USER
 # Pre-install "Modern Fortran" VS Code extension from Coder extension marketplace
 RUN code-server --install-extension fortran-lang.linter-gfortran
 
-# Define working directory when launching container
-WORKDIR ${FLEXI_ROOT}/docs/documentation/04_tutorials
-
 
 # =================================================================================================
 # 4. Switch to user and finalize [independent from BUILDTARGET]
 # =================================================================================================
 
 # Start from either of the previous stages
-FROM ${BUILDTARGET}3 AS base4
+FROM ${BUILDTARGET}3 AS minimal4
+
+# Define working directory when launching container:
+# Should be FLEXI root for 'minimal' build due to convenience, must be FLEXI root for 'jupyter' build as documentation references tutorial parameter files
+WORKDIR ${FLEXI_ROOT}
 
 # Switch (back) to user
 USER ${NB_USER}
