@@ -414,9 +414,8 @@ We proceed by running the code with the following command. If you chose to use t
 cd $FLEXI_ROOT/tutorials/cavity/Advanced_Re400
 ../build/bin/flexi parameter_flexi.ini
 ```
-If **FLEXI** was compiled with MPI support, it can also be run in parallel with the following command. Here, `<NUM_PROCS>` is an integer denoting the number of processes to be used in parallel. 
+Since the present setup is computationally more expensive than the basic setup above, you may want to recompile **FLEXI** with MPI support (`LIBS_USE_MPI=ON`) to run the simulation in parallel. To this end, modify the previous run command as follows, where `<NUM_PROCS>` is an integer denoting the number of processes to be used in parallel.
 ```bash
-cd $FLEXI_ROOT/tutorials/cavity/Advanced_Re400
 mpirun -np <NUM_PROCS> ../build/bin/flexi parameter_flexi.ini
 ```
 The evolution of the mean velocity of the lower wall is given in {numref}`fig:cavity_re400_wallvel`. Note the difference in the axis scales compared to {numref}`fig:cavity_re100_wallvel`. It is evident that the flow reaches steady state after about $t=35$.

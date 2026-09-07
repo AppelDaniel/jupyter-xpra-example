@@ -280,8 +280,6 @@ RUN pip install --no-cache-dir \
     numpy matplotlib h5py notebook jupyterlab jupyterhub ipykernel \
     # packages required for NFDI JupyterHub by JSC (https://hub.nfdi-jupyter.de/hub/home)
     jupyter-collaboration jupyterlab-hub-credit-extension jupyterlab-data-mount
-# Enable JupyterLab in container
-ENV JUPYTER_ENABLE_LAB=yes
 
 # Install Jupyter-remote-desktop-proxy package to run XFCE desktop environment in Jupyter
 # > Documentation / Dockerfile: https://github.com/jupyterhub/jupyter-remote-desktop-proxy
@@ -324,11 +322,11 @@ RUN chmod +x \
     /usr/local/bin/fix-permissions /etc/jupyter
 
 # Enable JupyterLab in container and expose port for it
-ENV JUPYTER_ENABLE_YES=yes \
+ENV JUPYTER_ENABLE_LAB=yes \
     JUPYTER_PORT=8888
 EXPOSE ${JUPYTER_PORT}
 
-# Start JupyterLab upon container launchi and show default notebook (see configuration in jupyter_server_config.py)
+# Start JupyterLab upon container launch and show default notebook (see configuration in jupyter_server_config.py)
 CMD ["start-notebook.py"]
 
 # Healthcheck

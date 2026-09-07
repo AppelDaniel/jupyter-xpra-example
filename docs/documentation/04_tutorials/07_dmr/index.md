@@ -52,6 +52,7 @@ The simulation setup is defined in the [parameter file](../../../../tutorials/dm
 IndicatorType        = Jameson
 IndVar               = 6       ! sixth variable (pressure)
                                ! used for indicator evaluation
+IndStartTime         = 0.001   ! starting time of indicator evaluation
 FV_LimiterType       = 1       ! MinMod
 FV_IndUpperThreshold = 0.010   ! upper threshold (if IndValue
                                ! above this value, switch to FV)
@@ -59,7 +60,7 @@ FV_IndLowerThreshold = 0.005   ! lower threshold (if IndValue
                                ! below this value, switch to DG)
 ```
 
-The `IndicatorType` parameter sets the type of indicator function used to detect DG elements containing discontinuities. For this case, the Jameson indicator {cite}`Persson06shock` is applied, an adaptation of the switching function of the Jameson-Schmidt-Turkel scheme {cite}`jameson1981numerical` to FV sub-cells. In contrast to the Persson indicator, it is not element-local and therefore more robust for traveling discontinuities. All indicator functions return a high value for "troubled" with discontinuities and low values for smooth elements. The variable `IndVar` specifies the index within the variable vector used to evaluate the indicator function. Typically, pressure (index 6) is a good choice and also used here. `FV_toDG_indicator` enables an additional Persson indicator {cite}`Persson06shock` for the switch from FV to DG. When an FV element is marked for transition to DG, it is temporarily converted to a DG element and the Persson indicator is evaluated for this DG polynomial to test if the polynomial is oscillating. Only in the case of a non-oscillatory solution, the solution is converted to DG. Otherwise, the element retains the FV representation. This improves the simulation stability when indicator functions defined on the FV sub-cells are used. In the given case, the Jameson indicator only considers oscillations between adjacent degrees of freedom (DOFs), which may miss certain high-frequency oscillations in the polynomial. The `FV_toDG_limit` parameter is then used as threshold for additional Persson indicator, restricting the FV to DG transition to indicator values below this choice. During initialization, by default the solution is initialized as DG polynomials for all elements. In a second, step, the indicator function is evaluated to identify troubled elements which are then converted to an FV representation. This can cause issues if discontinuities lie inside DG elements which leads to strongly oscillating polynomials and invalid solutions, e.g., negative density, even after converting these oscillating polynomials to FV. The `FV_IniSupersample` option enables a super-sampling of the initial solution for every FV sub-cell, which removes the mentioned problems with oscillating polynomials. The mean value of every FV sub-cell is computed by evaluating the initial solution in $(N+1)$ equidistant points per dimension inside the sub-cell and then taking the arithmetic mean value.
+The `IndicatorType` parameter sets the type of indicator function used to detect DG elements containing discontinuities. For this case, the Jameson indicator {cite}`Persson06shock` is applied, an adaptation of the switching function of the Jameson-Schmidt-Turkel scheme {cite}`jameson1981numerical` to FV sub-cells. In contrast to the Persson indicator, it is not element-local and therefore more robust for traveling discontinuities. All indicator functions return a high value for "troubled" elements with discontinuities and low values for smooth elements. The variable `IndVar` specifies the index within the variable vector used to evaluate the indicator function. Typically, the pressure (index 6) is a good choice and also used here. During initialization, the solution is first initialized as DG polynomials for all elements. In a second step, the indicator function is evaluated to identify troubled elements, which are then converted to the FV representation. This can cause issues if discontinuities lie inside DG elements which leads to strongly oscillating polynomials and invalid solutions, e.g., negative density, even after converting these oscillating polynomials to FV. The solution in these troubled cells is therefore initialized by re-evaluating the function for the initial conditions at the support points of the FV sub-cells. This ensures a sharp, non-oscillatory jump in the initial solution if the flow field is initialized with a discontinuity like a shock, as in the present example. In this case, an additional stabilization can be achieved by slightly delaying the start of the indicator evaluation through the parameter `IndStartTime`.
 
 ### Simulation and Results
 We proceed by running the code with the following command.
@@ -91,19 +92,12 @@ R = \alpha R_{FV} + (1-\alpha) R_{DG}
 with the blending coefficient $\alpha$. Instead of switching between a DG and a FV discretization, the blending allows a continuous transition between the DG and FV operators. The blending factor is computed based on the indicator proposed by {cite}`hennemann2021provably`, which is parameter-free and does not require any parameters to be tuned by the user. 
 
 #### Build Configuration
-<<<<<<< HEAD
 The FV blending is enabled through the build option `FLEXI_FV=BLEND`. The FV blending requires selecting the Gauss-Lobatto node set by setting `FLEXI_NODETYPE=GAUSS-LOBATTO` and to enable the split-form DG with ``FLEXI_SPLIT_DG=ON``.  **FLEXI** should be compiled using the `dmr_fvblend` preset, which will create another build folder in the tutorial's directory.
 ```{code-cell}
 cd $FLEXI_ROOT
 cmake --preset dmr_fvblend
 cmake --build --preset dmr_fvblend
 cd tutorials/dmr
-=======
-The FV blending is enabled through the build option `FLEXI_FV=BLEND`. The FV blending requires selecting the Gauss-Lobatto node set by setting `FLEXI_NODETYPE=GAUSS-LOBATTO` and to enable the split-form DG with ``FLEXI_SPLIT_DG=ON``. These build options are stored in the `dmr_fvblend` present, such that **FLEXI** can be compiled through the command
-```bash
-cmake -B build --preset dmr_fvblend
-cmake --build build
->>>>>>> master
 ```
 
 #### Simulation Parameters
